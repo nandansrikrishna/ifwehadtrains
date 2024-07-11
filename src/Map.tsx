@@ -1,14 +1,17 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import stations from './stations.json';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyOXY1MTQyIn0.q1xnoWyi9HUOqUppVZ2--w';
 
-export default function App() {
+interface Station {
+    name: string;
+    lngLat: [number, number]
+}
+
+export default function Map() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
-    const [lng, setLng] = useState(-95.3521);
-    const [lat, setLat] = useState(38.3969);
-    const [zoom, setZoom] = useState(3.69);
 
     useEffect(() => {
         if (map.current) return; // initialize map only once
@@ -16,27 +19,36 @@ export default function App() {
             map.current = new mapboxgl.Map({
                 container: mapContainer.current,
                 style: 'mapbox://styles/mapbox/light-v10',
-                center: [lng, lat],
-                zoom: zoom
+                // Center Map on US
+                center: [-95.3521, 38.3969],
+                zoom: 3.69
             });
-        }
-    }, []);
 
-    useEffect(() => {
-        if (!map.current) return; // wait for map to initialize
-        map.current.on('move', () => {
-            const center = map.current!.getCenter();
-            setLng(Number(center.lng.toFixed(2)));
-            setLat(Number(center.lat.toFixed(2)));
-            setZoom(Number(map.current!.getZoom().toFixed(2)));
-        });
+            (stations as Station[]).forEach(({ name, lngLat }) => {
+                const popup = new mapboxgl.Popup().setText(name);
+                
+                new mapboxgl.Marker({})
+                    .setLngLat(lngLat as [number, number])
+                    .setPopup(popup)
+                    .addTo(map.current as mapboxgl.Map)
+            });
+
+            // const popup = new mapboxgl.Popup({ offset: 25 }).setText(
+            //     'Train Station'
+            // );
+
+            // new mapboxgl.Marker({
+            //     color: '#4287f5',
+            //     scale: 1
+            // })
+            //     .setLngLat([-95, 38])
+            //     .setPopup(popup)
+            //     .addTo(map.current)
+        }
     }, []);
 
     return (
         <div className="relative">
-            <div className="absolute top-0 left-0 m-3 p-3 z-10 bg-[rgb(35,55,75)] bg-opacity-90 text-white font-mono rounded">
-                Longitude: {lng} | Latitude: {lat} | Zoom: {zoom}
-            </div>
             <div ref={mapContainer} className="w-full h-screen" />
         </div>
     );
