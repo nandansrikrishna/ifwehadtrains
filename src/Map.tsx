@@ -1,12 +1,19 @@
 import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import stations from './stations.json';
+import tracks from './tracks.json';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyOXY1MTQyIn0.q1xnoWyi9HUOqUppVZ2--w';
 
 interface Station {
+    id: number
     name: string;
     lngLat: [number, number]
+}
+
+interface Track {
+    endpoints: [number, number],
+    coordinates: [[number, number]]
 }
 
 export default function Map() {
@@ -18,32 +25,52 @@ export default function Map() {
         if (mapContainer.current) {
             map.current = new mapboxgl.Map({
                 container: mapContainer.current,
-                style: 'mapbox://styles/mapbox/light-v10',
+                style: 'mapbox://styles/mapbox/light-v11',
+                projection: 'mercator',
                 // Center Map on US
                 center: [-95.3521, 38.3969],
-                zoom: 3.69
+                zoom: 3.69,
             });
 
             (stations as Station[]).forEach(({ name, lngLat }) => {
                 const popup = new mapboxgl.Popup().setText(name);
-                
+
                 new mapboxgl.Marker({})
                     .setLngLat(lngLat as [number, number])
                     .setPopup(popup)
                     .addTo(map.current as mapboxgl.Map)
             });
 
-            // const popup = new mapboxgl.Popup({ offset: 25 }).setText(
-            //     'Train Station'
-            // );
-
-            // new mapboxgl.Marker({
-            //     color: '#4287f5',
-            //     scale: 1
-            // })
-            //     .setLngLat([-95, 38])
-            //     .setPopup(popup)
-            //     .addTo(map.current)
+            map.current.on('load', () => {
+                (tracks as Track[]).forEach(({ endpoints, coordinates }) => {
+                    const track_id = 'track' + endpoints[0] + '.' + endpoints[1];
+                    // console.log(track_id);
+                    map.current.addSource(track_id, {
+                        'type': 'geojson',
+                        'data': {
+                            'type': 'Feature',
+                            'properties': {},
+                            'geometry': {
+                                'type': 'LineString',
+                                'coordinates': coordinates
+                            }
+                        }
+                    });
+                    map.current.addLayer({
+                        'id': track_id,
+                        'type': 'line',
+                        'source': track_id,
+                        'layout': {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        'paint': {
+                            'line-color': '#5b8fe3',
+                            'line-width': 5
+                        }
+                    });
+                });
+            });
         }
     }, []);
 

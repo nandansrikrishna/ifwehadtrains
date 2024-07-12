@@ -1,5 +1,6 @@
 [
     {
+        "id": 1,
         "name": "Detroit",
         "lngLat": [
             -83.154348,
@@ -7,6 +8,7 @@
         ]
     },
     {
+        "id": 2,
         "name": "Chicago",
         "lngLat": [
             -87.687314,
@@ -14,6 +16,7 @@
         ]
     },
     {
+        "id": 3,
         "name": "NYC",
         "lngLat": [
             -73.871351,
@@ -21,6 +24,7 @@
         ]
     },
     {
+        "id": 4,
         "name": "Washington D.C.",
         "lngLat": [
             -77.023365,
@@ -28,6 +32,7 @@
         ]
     },
     {
+        "id": 5,
         "name": "Cleveland",
         "lngLat": [
             -81.6944,
