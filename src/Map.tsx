@@ -1,16 +1,18 @@
 import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
-import stations from './stations.json';
+import stationData from './stations.json';
 import tracks from './tracks.json';
 import { SearchBox } from './SearchBox.tsx';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyOXY1MTQyIn0.q1xnoWyi9HUOqUppVZ2--w';
 
 interface Station {
-    id: number
+    id: number;
     name: string;
-    lngLat: [number, number]
+    lngLat: [number, number];
 }
+
+const stations: Station[] = stationData as Station[];
 
 interface Track {
     endpoints: [number, number],
@@ -33,7 +35,7 @@ export default function Map() {
                 zoom: 3.69,
             });
 
-            (stations as Station[]).forEach(({ name, lngLat }) => {
+            (stations).forEach(({ name, lngLat }) => {
                 const popup = new mapboxgl.Popup().setText(name);
 
                 new mapboxgl.Marker({})
