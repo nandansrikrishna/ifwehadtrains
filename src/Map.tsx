@@ -80,13 +80,14 @@ export default function Map() {
         }
     }, []);
 
-    const handleSearch = (from: string, to: string) => {
-        console.log(`Searching route from ${from} to ${to}`);
+    const handleSearch = (from: number, to: number) => {
+        console.log('Searching route from station ID:', from, 'to station ID:', to);
     };
+
 
     return (
         <div className="relative">
-            <SearchBox onSearch={handleSearch} />
+            <SearchBox onSearch={handleSearch} stations={stations} />
             <div ref={mapContainer} className="w-full h-screen" />
         </div>
     );
