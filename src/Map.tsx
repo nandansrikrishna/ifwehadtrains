@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import stations from './stations.json';
 import tracks from './tracks.json';
+import { SearchBox } from './SearchBox.tsx';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyOXY1MTQyIn0.q1xnoWyi9HUOqUppVZ2--w';
 
@@ -45,37 +46,47 @@ export default function Map() {
                 (tracks as Track[]).forEach(({ endpoints, coordinates }) => {
                     const track_id = 'track' + endpoints[0] + '.' + endpoints[1];
                     // console.log(track_id);
-                    map.current.addSource(track_id, {
-                        'type': 'geojson',
-                        'data': {
-                            'type': 'Feature',
-                            'properties': {},
-                            'geometry': {
-                                'type': 'LineString',
-                                'coordinates': coordinates
+                    // IF Statements prevent TS error: map.current possibly null
+                    if (map.current) {
+                        map.current.addSource(track_id, {
+                            'type': 'geojson',
+                            'data': {
+                                'type': 'Feature',
+                                'properties': {},
+                                'geometry': {
+                                    'type': 'LineString',
+                                    'coordinates': coordinates
+                                }
                             }
-                        }
-                    });
-                    map.current.addLayer({
-                        'id': track_id,
-                        'type': 'line',
-                        'source': track_id,
-                        'layout': {
-                            'line-join': 'round',
-                            'line-cap': 'round'
-                        },
-                        'paint': {
-                            'line-color': '#5b8fe3',
-                            'line-width': 5
-                        }
-                    });
+                        });
+                    }
+                    if (map.current) {
+                        map.current.addLayer({
+                            'id': track_id,
+                            'type': 'line',
+                            'source': track_id,
+                            'layout': {
+                                'line-join': 'round',
+                                'line-cap': 'round'
+                            },
+                            'paint': {
+                                'line-color': '#5b8fe3',
+                                'line-width': 5
+                            }
+                        });
+                    }
                 });
             });
         }
     }, []);
 
+    const handleSearch = (from: string, to: string) => {
+        console.log(`Searching route from ${from} to ${to}`);
+    };
+
     return (
         <div className="relative">
+            <SearchBox onSearch={handleSearch} />
             <div ref={mapContainer} className="w-full h-screen" />
         </div>
     );
