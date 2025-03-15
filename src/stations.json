@@ -1,56 +1,326 @@
 [
     {
         "id": 1,
-        "name": "Detroit",
-        "IATA": "DTW",
+        "name": "Albany",
+        "IATA": "ALB",
         "lngLat": [
-            -83.154348,
-            42.348467
+            -73.803,
+            42.748
         ]
     },
     {
         "id": 2,
-        "name": "Chicago",
-        "IATA": "ORD",
+        "name": "Atlanta",
+        "IATA": "ATL",
         "lngLat": [
-            -87.687314,
-            41.794560
+            -84.427,
+            33.64
         ]
     },
     {
         "id": 3,
-        "name": "NYC",
-        "IATA": "JFK",
+        "name": "Austin",
+        "IATA": "AUS",
         "lngLat": [
-            -73.871351,
-            40.890361
+            -97.67,
+            30.194
         ]
     },
     {
         "id": 4,
-        "name": "Washington D.C.",
-        "IATA": "DCA",
+        "name": "Windsor Locks",
+        "IATA": "BDL",
         "lngLat": [
-            -77.023365,
-            38.982698
+            -72.683,
+            41.939
         ]
     },
     {
         "id": 5,
-        "name": "Cleveland",
-        "IATA": "CLE",
+        "name": "Nashville",
+        "IATA": "BNA",
         "lngLat": [
-            -81.6944,
-            41.4993
+            -86.678,
+            36.124
         ]
     },
     {
         "id": 6,
+        "name": "Boston",
+        "IATA": "BOS",
+        "lngLat": [
+            -71.005,
+            42.364
+        ]
+    },
+    {
+        "id": 7,
+        "name": "Cleveland",
+        "IATA": "CLE",
+        "lngLat": [
+            -81.85,
+            41.412
+        ]
+    },
+    {
+        "id": 8,
+        "name": "Charlotte",
+        "IATA": "CLT",
+        "lngLat": [
+            -80.943,
+            35.214
+        ]
+    },
+    {
+        "id": 9,
+        "name": "Cincinnati",
+        "IATA": "CVG",
+        "lngLat": [
+            -84.662,
+            39.046
+        ]
+    },
+    {
+        "id": 10,
+        "name": "Washington",
+        "IATA": "DCA",
+        "lngLat": [
+            -77.037,
+            38.852
+        ]
+    },
+    {
+        "id": 11,
+        "name": "Dallas-Fort Worth",
+        "IATA": "DFW",
+        "lngLat": [
+            -97.037,
+            32.896
+        ]
+    },
+    {
+        "id": 12,
+        "name": "Detroit",
+        "IATA": "DTW",
+        "lngLat": [
+            -83.353,
+            42.212
+        ]
+    },
+    {
+        "id": 13,
+        "name": "Fresno",
+        "IATA": "FAT",
+        "lngLat": [
+            -119.718,
+            36.776
+        ]
+    },
+    {
+        "id": 14,
+        "name": "Houston",
+        "IATA": "IAH",
+        "lngLat": [
+            -95.34,
+            29.98
+        ]
+    },
+    {
+        "id": 15,
+        "name": "Indianapolis",
+        "IATA": "IND",
+        "lngLat": [
+            -86.294,
+            39.717
+        ]
+    },
+    {
+        "id": 16,
+        "name": "New York",
+        "IATA": "JFK",
+        "lngLat": [
+            -73.779,
+            40.64
+        ]
+    },
+    {
+        "id": 17,
+        "name": "Las Vegas",
+        "IATA": "LAS",
+        "lngLat": [
+            -115.152,
+            36.08
+        ]
+    },
+    {
+        "id": 18,
+        "name": "Los Angeles",
+        "IATA": "LAX",
+        "lngLat": [
+            -118.408,
+            33.942
+        ]
+    },
+    {
+        "id": 19,
+        "name": "Orlando",
+        "IATA": "MCO",
+        "lngLat": [
+            -81.316,
+            28.429
+        ]
+    },
+    {
+        "id": 20,
+        "name": "Harrisburg",
+        "IATA": "MDT",
+        "lngLat": [
+            -76.763,
+            40.193
+        ]
+    },
+    {
+        "id": 21,
+        "name": "Miami",
+        "IATA": "MIA",
+        "lngLat": [
+            -80.291,
+            25.793
+        ]
+    },
+    {
+        "id": 22,
+        "name": "Minneapolis",
+        "IATA": "MSP",
+        "lngLat": [
+            -93.217,
+            44.88
+        ]
+    },
+    {
+        "id": 23,
+        "name": "Chicago",
+        "IATA": "ORD",
+        "lngLat": [
+            -87.904,
+            41.979
+        ]
+    },
+    {
+        "id": 24,
+        "name": "Norfolk",
+        "IATA": "ORF",
+        "lngLat": [
+            -76.201,
+            36.894
+        ]
+    },
+    {
+        "id": 25,
+        "name": "Philadelphia",
+        "IATA": "PHL",
+        "lngLat": [
+            -75.241,
+            39.872
+        ]
+    },
+    {
+        "id": 26,
+        "name": "Phoenix",
+        "IATA": "PHX",
+        "lngLat": [
+            -112.008,
+            33.434
+        ]
+    },
+    {
+        "id": 27,
+        "name": "Pittsburgh",
+        "IATA": "PIT",
+        "lngLat": [
+            -80.233,
+            40.491
+        ]
+    },
+    {
+        "id": 28,
+        "name": "Raleigh-Durham",
+        "IATA": "RDU",
+        "lngLat": [
+            -78.787,
+            35.877
+        ]
+    },
+    {
+        "id": 29,
+        "name": "Richmond",
+        "IATA": "RIC",
+        "lngLat": [
+            -77.319,
+            37.505
+        ]
+    },
+    {
+        "id": 30,
+        "name": "Rochester",
+        "IATA": "ROC",
+        "lngLat": [
+            -77.672,
+            43.119
+        ]
+    },
+    {
+        "id": 31,
+        "name": "San Diego",
+        "IATA": "SAN",
+        "lngLat": [
+            -117.189,
+            32.733
+        ]
+    },
+    {
+        "id": 32,
+        "name": "San Antonio",
+        "IATA": "SAT",
+        "lngLat": [
+            -98.47,
+            29.534
+        ]
+    },
+    {
+        "id": 33,
         "name": "San Francisco",
         "IATA": "SFO",
         "lngLat": [
-            -122.434465,
-            37.658743
+            -122.375,
+            37.619
+        ]
+    },
+    {
+        "id": 34,
+        "name": "Sacramento",
+        "IATA": "SMF",
+        "lngLat": [
+            -121.591,
+            38.695
+        ]
+    },
+    {
+        "id": 35,
+        "name": "St. Louis",
+        "IATA": "STL",
+        "lngLat": [
+            -90.36,
+            38.748
+        ]
+    },
+    {
+        "id": 36,
+        "name": "Tampa",
+        "IATA": "TPA",
+        "lngLat": [
+            -82.533,
+            27.975
         ]
     }
 ]
