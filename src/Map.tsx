@@ -4,7 +4,8 @@ import stationData from './stations.json';
 import tracks from './tracks.json';
 import { SearchBox } from './SearchBox.tsx';
 
-mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyOXY1MTQyIn0.q1xnoWyi9HUOqUppVZ2--w';
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+
 
 interface Station {
     id: number;
