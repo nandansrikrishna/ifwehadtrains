@@ -9,6 +9,7 @@ mapboxgl.accessToken = 'pk.eyJ1IjoibmFuZGFucyIsImEiOiJjbHlncW1odzgwZTJjMmlwbjIyO
 interface Station {
     id: number;
     name: string;
+    IATA: string;
     lngLat: [number, number];
 }
 
