@@ -34,7 +34,7 @@ export default function Map() {
                 projection: 'mercator',
                 // Center Map on US
                 center: [-95.3521, 38.3969],
-                zoom: 3.69,
+                zoom: 4.25,
             });
 
             (stations).forEach(({ name, lngLat }) => {
