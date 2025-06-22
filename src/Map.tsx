@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import stationData from './stations.json';
 import tracks from './tracks.json';
 import { SearchBox } from './SearchBox.tsx';
+import { HomeIcon } from '@heroicons/react/24/outline';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
 
@@ -85,13 +86,56 @@ export default function Map() {
     }, []);
 
     const handleSearch = (from: number, to: number) => {
-        console.log('Searching route from station ID:', from, 'to station ID:', to);
+        const fromStation = stations.find(s => s.id === from);
+        const toStation = stations.find(s => s.id === to);
+        
+        if (fromStation && toStation) {
+            // Calculate bounding box
+            const bounds = new mapboxgl.LngLatBounds(
+                fromStation.lngLat,
+                toStation.lngLat
+            );
+            
+            // Add some padding to the bounds
+            const padding = {
+                top: 100,
+                bottom: 100,
+                left: 100,
+                right: 100
+            };
+            
+            // Fit map to bounds with padding
+            if (map.current) {
+                map.current.fitBounds(bounds, { padding });
+            }
+        }
     };
 
+
+    const handleHome = () => {
+        if (map.current) {
+            map.current.flyTo({
+                center: [-95.3521, 38.3969],
+                zoom: 4.25,
+                pitch: 0,
+                bearing: 0,
+                duration: 1000
+            });
+        }
+    };
 
     return (
         <div className="relative">
             <SearchBox onSearch={handleSearch} stations={stations} />
+            <div className="absolute top-4 right-4 z-50">
+                <button 
+                    onClick={handleHome}
+                    className="bg-white p-2 rounded shadow-md hover:bg-gray-100 flex items-center justify-center"
+                    title="Reset map to default view"
+                >
+                    <HomeIcon className="h-5 w-5" />
+                </button>
+            </div>
             <div ref={mapContainer} className="w-full h-screen" />
         </div>
     );
