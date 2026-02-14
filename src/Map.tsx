@@ -60,11 +60,12 @@ export default function Map() {
         copyMessage,
         editingTrackIndex,
         currentDraftTrackObject,
+        canUndo,
+        canRedo,
         draftStartStation,
         draftEndStation,
         handleStationClick,
         resetDraftTrack,
-        undoLastPoint,
         saveDraftTrack,
         copyCurrentJson,
         copySavedJson,
@@ -323,8 +324,9 @@ export default function Map() {
                     copyMessage={copyMessage}
                     isEditingExistingTrack={editingTrackIndex !== null}
                     editingTrackIndex={editingTrackIndex}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
                     onResetDraft={resetDraftTrack}
-                    onUndoPoint={undoLastPoint}
                     onSaveTrack={saveDraftTrack}
                     onCopyCurrentJson={copyCurrentJson}
                     onCopySavedJson={copySavedJson}

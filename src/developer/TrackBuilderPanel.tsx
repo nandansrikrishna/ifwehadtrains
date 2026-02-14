@@ -9,8 +9,9 @@ interface TrackBuilderPanelProps {
     copyMessage: string | null;
     isEditingExistingTrack: boolean;
     editingTrackIndex: number | null;
+    canUndo: boolean;
+    canRedo: boolean;
     onResetDraft: () => void;
-    onUndoPoint: () => void;
     onSaveTrack: () => void;
     onCopyCurrentJson: () => void;
     onCopySavedJson: () => void;
@@ -26,8 +27,9 @@ export function TrackBuilderPanel({
     copyMessage,
     isEditingExistingTrack,
     editingTrackIndex,
+    canUndo,
+    canRedo,
     onResetDraft,
-    onUndoPoint,
     onSaveTrack,
     onCopyCurrentJson,
     onCopySavedJson,
@@ -46,6 +48,9 @@ export function TrackBuilderPanel({
                 Click a point to select it, then press Delete/Backspace to remove it.
             </p>
             <p className="text-xs text-gray-700 mt-1">
+                Undo/Redo: Cmd+Z and Cmd+Shift+Z ({canUndo ? 'undo available' : 'nothing to undo'}, {canRedo ? 'redo available' : 'nothing to redo'}).
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
                 Hover a track segment to see a dotted amber midpoint, then click it to insert a point.
             </p>
             <p className="text-xs text-gray-700 mt-1">
@@ -62,13 +67,6 @@ export function TrackBuilderPanel({
                     className="rounded bg-gray-100 px-3 py-1.5 text-xs text-gray-800 hover:bg-gray-200"
                 >
                     Reset Draft
-                </button>
-                <button
-                    onClick={onUndoPoint}
-                    className="rounded bg-gray-100 px-3 py-1.5 text-xs text-gray-800 hover:bg-gray-200"
-                    disabled={viaPointCount === 0}
-                >
-                    Undo Point
                 </button>
                 <button
                     onClick={onSaveTrack}

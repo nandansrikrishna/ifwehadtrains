@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { GeoJSONSource, Map as MapboxMap, MapLayerMouseEvent, MapMouseEvent } from 'mapbox-gl';
 import type { Station, Track } from '../routing';
+import { useKeyboardCommands, type KeyboardCommand } from '../hooks/useKeyboardCommands';
+import { useActionHistory, type ActionHandlers, type HistoryEntry } from './useActionHistory';
 
 interface DraftTrackState {
     startId: number | null;
@@ -22,6 +24,22 @@ interface UseTrackBuilderParams {
 const DRAFT_LINE_SOURCE = 'draft-track';
 const DRAFT_POINTS_SOURCE = 'draft-points';
 const DRAFT_INSERT_SOURCE = 'draft-insert-point';
+const EMPTY_DRAFT_TRACK: DraftTrackState = {
+    startId: null,
+    endId: null,
+    viaPoints: []
+};
+
+type DraftTrackActionType = 'insert_point' | 'delete_point' | 'move_point';
+
+interface PointPayload {
+    index: number;
+    point: [number, number];
+}
+
+interface DeletePayload {
+    index: number;
+}
 
 interface InsertCandidate {
     segmentIndex: number;
@@ -34,6 +52,46 @@ function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
         features: []
     };
 }
+
+function pointsEqual(a: [number, number], b: [number, number]): boolean {
+    return a[0] === b[0] && a[1] === b[1];
+}
+
+const draftTrackActionHandlers: ActionHandlers<DraftTrackState, DraftTrackActionType> = {
+    insert_point: (state, payload) => {
+        const { index, point } = payload as PointPayload;
+        if (index < 0 || index > state.viaPoints.length) return state;
+
+        const viaPoints = [...state.viaPoints];
+        viaPoints.splice(index, 0, point);
+        return {
+            ...state,
+            viaPoints
+        };
+    },
+    delete_point: (state, payload) => {
+        const { index } = payload as DeletePayload;
+        if (index < 0 || index >= state.viaPoints.length) return state;
+
+        const viaPoints = [...state.viaPoints];
+        viaPoints.splice(index, 1);
+        return {
+            ...state,
+            viaPoints
+        };
+    },
+    move_point: (state, payload) => {
+        const { index, point } = payload as PointPayload;
+        if (index < 0 || index >= state.viaPoints.length) return state;
+
+        const viaPoints = [...state.viaPoints];
+        viaPoints[index] = point;
+        return {
+            ...state,
+            viaPoints
+        };
+    }
+};
 
 export function initializeTrackBuilderLayers(mapInstance: MapboxMap): void {
     if (!mapInstance.getSource(DRAFT_LINE_SOURCE)) {
@@ -72,7 +130,6 @@ export function initializeTrackBuilderLayers(mapInstance: MapboxMap): void {
             paint: {
                 'line-color': '#d97706',
                 'line-width': 14,
-                // Keep it effectively invisible, but still reliably interactive.
                 'line-opacity': 0.01
             }
         });
@@ -151,14 +208,27 @@ export function useTrackBuilder({
 }: UseTrackBuilderParams) {
     const developerModeRef = useRef(isDeveloperMode);
     const draggingViaIndexRef = useRef<number | null>(null);
+    const dragStartPointRef = useRef<[number, number] | null>(null);
     const insertCandidateRef = useRef<InsertCandidate | null>(null);
     const lastInsertAtRef = useRef(0);
     const suppressNextLineInsertRef = useRef(false);
-    const [draftTrack, setDraftTrack] = useState<DraftTrackState>({
-        startId: null,
-        endId: null,
-        viaPoints: []
-    });
+
+    const {
+        state: draftTrack,
+        setState: setDraftTrack,
+        execute: executeDraftTrackAction,
+        record: recordDraftTrackAction,
+        undo: undoDraftTrackAction,
+        redo: redoDraftTrackAction,
+        clearHistory: clearDraftTrackHistory,
+        canUndo,
+        canRedo,
+    } = useActionHistory<DraftTrackState, DraftTrackActionType>(
+        EMPTY_DRAFT_TRACK,
+        draftTrackActionHandlers
+    );
+
+    const draftTrackRef = useRef(draftTrack);
     const [savedDraftTracks, setSavedDraftTracks] = useState<Track[]>([]);
     const [copyMessage, setCopyMessage] = useState<string | null>(null);
     const [editingTrackIndex, setEditingTrackIndex] = useState<number | null>(null);
@@ -169,6 +239,91 @@ export function useTrackBuilder({
     }, [isDeveloperMode]);
 
     useEffect(() => {
+        draftTrackRef.current = draftTrack;
+    }, [draftTrack]);
+
+    const isUndoShortcut = useCallback((event: KeyboardEvent) => {
+        if (!(event.metaKey || event.ctrlKey)) return false;
+        if (event.altKey) return false;
+        return event.key.toLowerCase() === 'z' && !event.shiftKey;
+    }, []);
+
+    const isRedoShortcut = useCallback((event: KeyboardEvent) => {
+        if (!(event.metaKey || event.ctrlKey)) return false;
+        if (event.altKey) return false;
+        return event.key.toLowerCase() === 'z' && event.shiftKey;
+    }, []);
+
+    const keyboardCommands = useMemo<KeyboardCommand[]>(() => [
+        {
+            id: 'undo-track-builder-action',
+            enabled: isDeveloperMode && canUndo,
+            matches: isUndoShortcut,
+            handler: () => {
+                if (undoDraftTrackAction()) {
+                    setSelectedViaPointIndex(null);
+                    setCopyMessage(null);
+                }
+            }
+        },
+        {
+            id: 'redo-track-builder-action',
+            enabled: isDeveloperMode && canRedo,
+            matches: isRedoShortcut,
+            handler: () => {
+                if (redoDraftTrackAction()) {
+                    setSelectedViaPointIndex(null);
+                    setCopyMessage(null);
+                }
+            }
+        },
+        {
+            id: 'delete-selected-track-point',
+            enabled: isDeveloperMode && selectedViaPointIndex !== null,
+            matches: (event) => event.key === 'Delete' || event.key === 'Backspace',
+            handler: () => {
+                const index = selectedViaPointIndex;
+                if (index === null) return;
+
+                const point = draftTrackRef.current.viaPoints[index];
+                if (!point) return;
+
+                const entry: HistoryEntry<DraftTrackActionType> = {
+                    redo: {
+                        type: 'delete_point',
+                        payload: { index }
+                    },
+                    undo: {
+                        type: 'insert_point',
+                        payload: { index, point }
+                    }
+                };
+                executeDraftTrackAction(entry);
+                setSelectedViaPointIndex(null);
+                setCopyMessage(null);
+            }
+        }
+    ], [
+        canRedo,
+        canUndo,
+        executeDraftTrackAction,
+        isDeveloperMode,
+        isRedoShortcut,
+        isUndoShortcut,
+        redoDraftTrackAction,
+        selectedViaPointIndex,
+        undoDraftTrackAction,
+    ]);
+
+    useKeyboardCommands(keyboardCommands);
+
+    const clearDraftBuilderState = useCallback(() => {
+        setDraftTrack(EMPTY_DRAFT_TRACK);
+        clearDraftTrackHistory();
+        setSelectedViaPointIndex(null);
+    }, [clearDraftTrackHistory, setDraftTrack]);
+
+    useEffect(() => {
         if (!map.current || !mapLoaded) return;
         const mapInstance = map.current;
         if (!mapInstance.getLayer('tracks-base')) return;
@@ -176,8 +331,6 @@ export function useTrackBuilder({
         const handleTrackClick = (event: MapLayerMouseEvent) => {
             if (!developerModeRef.current) return;
 
-            // Ignore base-track selection clicks when user is interacting with
-            // the active draft geometry (point select/drag or segment insert).
             const interactingWithDraft = mapInstance.queryRenderedFeatures(event.point, {
                 layers: ['draft-via-points', 'draft-track-hitbox', 'draft-track-line']
             }).length > 0;
@@ -195,6 +348,7 @@ export function useTrackBuilder({
                 endId: track.endpoints[1],
                 viaPoints: track.coordinates.slice(1, -1)
             });
+            clearDraftTrackHistory();
             setSelectedViaPointIndex(null);
         };
 
@@ -202,7 +356,7 @@ export function useTrackBuilder({
         return () => {
             mapInstance.off('click', 'tracks-base', handleTrackClick);
         };
-    }, [map, mapLoaded, networkTracks]);
+    }, [clearDraftTrackHistory, map, mapLoaded, networkTracks, setDraftTrack]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
@@ -227,6 +381,7 @@ export function useTrackBuilder({
 
             suppressNextLineInsertRef.current = true;
             draggingViaIndexRef.current = index;
+            dragStartPointRef.current = draftTrackRef.current.viaPoints[index] ?? null;
             setSelectedViaPointIndex(index);
             mapInstance.getCanvas().style.cursor = 'grabbing';
             mapInstance.dragPan.disable();
@@ -262,10 +417,36 @@ export function useTrackBuilder({
         };
 
         const stopDragging = () => {
-            if (draggingViaIndexRef.current === null) return;
+            const activeIndex = draggingViaIndexRef.current;
+            if (activeIndex === null) return;
+
             draggingViaIndexRef.current = null;
             mapInstance.dragPan.enable();
             mapInstance.getCanvas().style.cursor = developerModeRef.current ? 'grab' : '';
+
+            const fromPoint = dragStartPointRef.current;
+            const toPoint = draftTrackRef.current.viaPoints[activeIndex];
+            dragStartPointRef.current = null;
+            if (!fromPoint || !toPoint || pointsEqual(fromPoint, toPoint)) return;
+
+            const entry: HistoryEntry<DraftTrackActionType> = {
+                redo: {
+                    type: 'move_point',
+                    payload: {
+                        index: activeIndex,
+                        point: toPoint
+                    }
+                },
+                undo: {
+                    type: 'move_point',
+                    payload: {
+                        index: activeIndex,
+                        point: fromPoint
+                    }
+                }
+            };
+            recordDraftTrackAction(entry);
+            setCopyMessage(null);
         };
 
         mapInstance.on('mouseenter', 'draft-via-points', handleMouseEnter);
@@ -285,7 +466,7 @@ export function useTrackBuilder({
             mapInstance.dragPan.enable();
             mapInstance.getCanvas().style.cursor = '';
         };
-    }, [map, mapLoaded]);
+    }, [map, mapLoaded, recordDraftTrackAction, setDraftTrack]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
@@ -301,11 +482,11 @@ export function useTrackBuilder({
         };
 
         const buildLineCoordinates = (): [number, number][] => {
-            const startStation = draftTrack.startId !== null ? stationsById.get(draftTrack.startId) : undefined;
-            const endStation = draftTrack.endId !== null ? stationsById.get(draftTrack.endId) : undefined;
+            const startStation = draftTrackRef.current.startId !== null ? stationsById.get(draftTrackRef.current.startId) : undefined;
+            const endStation = draftTrackRef.current.endId !== null ? stationsById.get(draftTrackRef.current.endId) : undefined;
             if (!startStation || !endStation) return [];
 
-            return [startStation.lngLat, ...draftTrack.viaPoints, endStation.lngLat];
+            return [startStation.lngLat, ...draftTrackRef.current.viaPoints, endStation.lngLat];
         };
 
         const getClosestInsertCandidate = (event: MapMouseEvent): InsertCandidate | null => {
@@ -399,18 +580,25 @@ export function useTrackBuilder({
             if (now - lastInsertAtRef.current < 120) return;
             lastInsertAtRef.current = now;
 
-            setCopyMessage(null);
+            const entry: HistoryEntry<DraftTrackActionType> = {
+                redo: {
+                    type: 'insert_point',
+                    payload: {
+                        index: candidate.segmentIndex,
+                        point: candidate.midpoint
+                    }
+                },
+                undo: {
+                    type: 'delete_point',
+                    payload: {
+                        index: candidate.segmentIndex
+                    }
+                }
+            };
 
-            setDraftTrack((previous) => {
-                if (previous.startId === null || previous.endId === null) return previous;
-                const updatedViaPoints = [...previous.viaPoints];
-                updatedViaPoints.splice(candidate.segmentIndex, 0, candidate.midpoint);
-                return {
-                    ...previous,
-                    viaPoints: updatedViaPoints
-                };
-            });
+            executeDraftTrackAction(entry);
             setSelectedViaPointIndex(candidate.segmentIndex);
+            setCopyMessage(null);
         };
 
         mapInstance.on('mousemove', 'draft-track-hitbox', handleDraftLineMove);
@@ -427,56 +615,17 @@ export function useTrackBuilder({
             mapInstance.off('click', 'draft-track-hitbox', handleDraftLineClick);
             clearInsertCandidate();
         };
-    }, [draftTrack, map, mapLoaded, stationsById]);
+    }, [executeDraftTrackAction, map, mapLoaded, stationsById]);
 
     useEffect(() => {
         if (!isDeveloperMode && map.current) {
             draggingViaIndexRef.current = null;
+            dragStartPointRef.current = null;
             map.current.dragPan.enable();
             map.current.getCanvas().style.cursor = '';
             setSelectedViaPointIndex(null);
         }
     }, [isDeveloperMode, map]);
-
-    useEffect(() => {
-        if (!isDeveloperMode) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (selectedViaPointIndex === null) return;
-            if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-
-            const target = event.target as HTMLElement | null;
-            const isTypingContext = Boolean(
-                target &&
-                (
-                    target.tagName === 'INPUT' ||
-                    target.tagName === 'TEXTAREA' ||
-                    target.isContentEditable
-                )
-            );
-            if (isTypingContext) return;
-
-            event.preventDefault();
-            setDraftTrack((previous) => {
-                if (selectedViaPointIndex < 0 || selectedViaPointIndex >= previous.viaPoints.length) {
-                    return previous;
-                }
-                const updatedViaPoints = [...previous.viaPoints];
-                updatedViaPoints.splice(selectedViaPointIndex, 1);
-                return {
-                    ...previous,
-                    viaPoints: updatedViaPoints
-                };
-            });
-            setSelectedViaPointIndex(null);
-            setCopyMessage(null);
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [isDeveloperMode, selectedViaPointIndex]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
@@ -551,29 +700,32 @@ export function useTrackBuilder({
         if (!developerModeRef.current) return;
 
         setCopyMessage(null);
-        setEditingTrackIndex(null);
         setSelectedViaPointIndex(null);
-        setDraftTrack((previous) => {
-            if (previous.startId === null || previous.endId !== null) {
-                return { startId: stationId, endId: null, viaPoints: [] };
-            }
-            if (previous.startId === stationId) {
-                return previous;
-            }
-            return { ...previous, endId: stationId };
-        });
+
+        const current = draftTrackRef.current;
+        if (current.startId === null || current.endId !== null) {
+            setEditingTrackIndex(null);
+            setDraftTrack({
+                startId: stationId,
+                endId: null,
+                viaPoints: []
+            });
+            clearDraftTrackHistory();
+            return;
+        }
+
+        if (current.startId === stationId) return;
+
+        setDraftTrack((previous) => ({
+            ...previous,
+            endId: stationId
+        }));
     };
 
     const resetDraftTrack = () => {
-        setDraftTrack({ startId: null, endId: null, viaPoints: [] });
+        clearDraftBuilderState();
         setEditingTrackIndex(null);
-        setSelectedViaPointIndex(null);
         setCopyMessage(null);
-    };
-
-    const undoLastPoint = () => {
-        setCopyMessage(null);
-        setDraftTrack((previous) => ({ ...previous, viaPoints: previous.viaPoints.slice(0, -1) }));
     };
 
     const saveDraftTrack = async () => {
@@ -609,16 +761,14 @@ export function useTrackBuilder({
             setNetworkTracks((previous) => previous.map((track, index) => (
                 index === editingTrackIndex ? currentDraftTrackObject : track
             )));
-            setDraftTrack({ startId: null, endId: null, viaPoints: [] });
             setEditingTrackIndex(null);
-            setSelectedViaPointIndex(null);
+            clearDraftBuilderState();
             setCopyMessage('Track updated successfully.');
             return;
         }
 
         setSavedDraftTracks((previous) => [...previous, currentDraftTrackObject]);
-        setDraftTrack({ startId: null, endId: null, viaPoints: [] });
-        setSelectedViaPointIndex(null);
+        clearDraftBuilderState();
         setCopyMessage('Track added to saved drafts. Append when ready.');
     };
 
@@ -674,11 +824,12 @@ export function useTrackBuilder({
         copyMessage,
         editingTrackIndex,
         currentDraftTrackObject,
+        canUndo,
+        canRedo,
         draftStartStation: draftTrack.startId !== null ? stationsById.get(draftTrack.startId) ?? null : null,
         draftEndStation: draftTrack.endId !== null ? stationsById.get(draftTrack.endId) ?? null : null,
         handleStationClick,
         resetDraftTrack,
-        undoLastPoint,
         saveDraftTrack,
         copyCurrentJson,
         copySavedJson,
