@@ -60,6 +60,24 @@ export function initializeTrackBuilderLayers(mapInstance: MapboxMap): void {
         });
     }
 
+    if (!mapInstance.getLayer('draft-track-hitbox')) {
+        mapInstance.addLayer({
+            id: 'draft-track-hitbox',
+            type: 'line',
+            source: DRAFT_LINE_SOURCE,
+            layout: {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            paint: {
+                'line-color': '#d97706',
+                'line-width': 14,
+                // Keep it effectively invisible, but still reliably interactive.
+                'line-opacity': 0.01
+            }
+        });
+    }
+
     if (!mapInstance.getSource(DRAFT_POINTS_SOURCE)) {
         mapInstance.addSource(DRAFT_POINTS_SOURCE, {
             type: 'geojson',
@@ -95,11 +113,13 @@ export function initializeTrackBuilderLayers(mapInstance: MapboxMap): void {
             source: DRAFT_INSERT_SOURCE,
             layout: {
                 'text-field': '◌',
-                'text-size': 22,
+                'text-size': 26,
                 'text-allow-overlap': true
             },
             paint: {
-                'text-color': '#d97706'
+                'text-color': '#d97706',
+                'text-halo-color': '#92400e',
+                'text-halo-width': 0.8
             }
         });
     }
@@ -225,7 +245,7 @@ export function useTrackBuilder({
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
         const mapInstance = map.current;
-        if (!mapInstance.getLayer('draft-track-line')) return;
+        if (!mapInstance.getLayer('draft-track-hitbox')) return;
 
         const insertSource = mapInstance.getSource(DRAFT_INSERT_SOURCE) as GeoJSONSource | undefined;
         if (!insertSource) return;
@@ -339,13 +359,19 @@ export function useTrackBuilder({
             });
         };
 
+        mapInstance.on('mousemove', 'draft-track-hitbox', handleDraftLineMove);
         mapInstance.on('mousemove', 'draft-track-line', handleDraftLineMove);
+        mapInstance.on('mouseleave', 'draft-track-hitbox', handleDraftLineLeave);
         mapInstance.on('mouseleave', 'draft-track-line', handleDraftLineLeave);
+        mapInstance.on('click', 'draft-track-hitbox', handleDraftLineClick);
         mapInstance.on('click', 'draft-track-line', handleDraftLineClick);
 
         return () => {
+            mapInstance.off('mousemove', 'draft-track-hitbox', handleDraftLineMove);
             mapInstance.off('mousemove', 'draft-track-line', handleDraftLineMove);
+            mapInstance.off('mouseleave', 'draft-track-hitbox', handleDraftLineLeave);
             mapInstance.off('mouseleave', 'draft-track-line', handleDraftLineLeave);
+            mapInstance.off('click', 'draft-track-hitbox', handleDraftLineClick);
             mapInstance.off('click', 'draft-track-line', handleDraftLineClick);
             clearInsertCandidate();
         };
