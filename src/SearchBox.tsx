@@ -22,6 +22,7 @@ export function SearchBox({ onSearch, stations }: SearchBoxProps) {
     const handleFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setFrom(value);
+        setSelectedFromStation(null);
         if (value) {
             setFromSuggestions(
                 stations.filter((station) =>
@@ -36,6 +37,7 @@ export function SearchBox({ onSearch, stations }: SearchBoxProps) {
     const handleToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setTo(value);
+        setSelectedToStation(null);
         if (value) {
             setToSuggestions(
                 stations.filter((station) =>
