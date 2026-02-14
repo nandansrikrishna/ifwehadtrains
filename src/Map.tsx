@@ -58,6 +58,7 @@ export default function Map() {
         draftTrack,
         savedDraftTracks,
         copyMessage,
+        editingTrackIndex,
         currentDraftTrackObject,
         draftStartStation,
         draftEndStation,
@@ -73,6 +74,7 @@ export default function Map() {
         isDeveloperMode,
         map,
         mapLoaded,
+        networkTracks,
         stationsById,
         setNetworkTracks,
     });
@@ -114,9 +116,9 @@ export default function Map() {
                 type: 'geojson',
                 data: {
                     type: 'FeatureCollection',
-                    features: initialTracks.map(({ endpoints, coordinates }) => ({
+                    features: initialTracks.map(({ endpoints, coordinates }, index) => ({
                         type: 'Feature' as const,
-                        properties: { id: `${endpoints[0]}:${endpoints[1]}` },
+                        properties: { id: `${endpoints[0]}:${endpoints[1]}`, index },
                         geometry: {
                             type: 'LineString' as const,
                             coordinates
@@ -170,9 +172,9 @@ export default function Map() {
 
         tracksSource.setData({
             type: 'FeatureCollection',
-            features: networkTracks.map(({ endpoints, coordinates }) => ({
+            features: networkTracks.map(({ endpoints, coordinates }, index) => ({
                 type: 'Feature' as const,
-                properties: { id: `${endpoints[0]}:${endpoints[1]}` },
+                properties: { id: `${endpoints[0]}:${endpoints[1]}`, index },
                 geometry: {
                     type: 'LineString' as const,
                     coordinates
@@ -319,6 +321,8 @@ export default function Map() {
                     currentDraftTrackObject={currentDraftTrackObject}
                     savedDraftTracks={savedDraftTracks}
                     copyMessage={copyMessage}
+                    isEditingExistingTrack={editingTrackIndex !== null}
+                    editingTrackIndex={editingTrackIndex}
                     onResetDraft={resetDraftTrack}
                     onUndoPoint={undoLastPoint}
                     onSaveTrack={saveDraftTrack}

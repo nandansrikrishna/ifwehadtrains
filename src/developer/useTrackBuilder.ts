@@ -14,6 +14,7 @@ interface UseTrackBuilderParams {
     isDeveloperMode: boolean;
     map: MutableRefObject<MapboxMap | null>;
     mapLoaded: boolean;
+    networkTracks: Track[];
     stationsById: Map<number, Station>;
     setNetworkTracks: Dispatch<SetStateAction<Track[]>>;
 }
@@ -80,6 +81,7 @@ export function useTrackBuilder({
     isDeveloperMode,
     map,
     mapLoaded,
+    networkTracks,
     stationsById,
     setNetworkTracks,
 }: UseTrackBuilderParams) {
@@ -93,6 +95,7 @@ export function useTrackBuilder({
     });
     const [savedDraftTracks, setSavedDraftTracks] = useState<Track[]>([]);
     const [copyMessage, setCopyMessage] = useState<string | null>(null);
+    const [editingTrackIndex, setEditingTrackIndex] = useState<number | null>(null);
 
     useEffect(() => {
         developerModeRef.current = isDeveloperMode;
@@ -124,6 +127,34 @@ export function useTrackBuilder({
             mapInstance.off('click', handleMapClick);
         };
     }, [map, mapLoaded]);
+
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+        const mapInstance = map.current;
+        if (!mapInstance.getLayer('tracks-base')) return;
+
+        const handleTrackClick = (event: MapLayerMouseEvent) => {
+            if (!developerModeRef.current) return;
+            const rawIndex = event.features?.[0]?.properties?.index;
+            const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= networkTracks.length) return;
+
+            const track = networkTracks[index];
+            suppressNextMapClickRef.current = true;
+            setCopyMessage(`Editing track #${index}. Drag points or add new points, then save.`);
+            setEditingTrackIndex(index);
+            setDraftTrack({
+                startId: track.endpoints[0],
+                endId: track.endpoints[1],
+                viaPoints: track.coordinates.slice(1, -1)
+            });
+        };
+
+        mapInstance.on('click', 'tracks-base', handleTrackClick);
+        return () => {
+            mapInstance.off('click', 'tracks-base', handleTrackClick);
+        };
+    }, [map, mapLoaded, networkTracks]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
@@ -267,6 +298,7 @@ export function useTrackBuilder({
         if (!developerModeRef.current) return;
 
         setCopyMessage(null);
+        setEditingTrackIndex(null);
         setDraftTrack((previous) => {
             if (previous.startId === null || previous.endId !== null) {
                 return { startId: stationId, endId: null, viaPoints: [] };
@@ -280,6 +312,7 @@ export function useTrackBuilder({
 
     const resetDraftTrack = () => {
         setDraftTrack({ startId: null, endId: null, viaPoints: [] });
+        setEditingTrackIndex(null);
         setCopyMessage(null);
     };
 
@@ -288,10 +321,48 @@ export function useTrackBuilder({
         setDraftTrack((previous) => ({ ...previous, viaPoints: previous.viaPoints.slice(0, -1) }));
     };
 
-    const saveDraftTrack = () => {
+    const saveDraftTrack = async () => {
         if (!currentDraftTrackObject) return;
+
+        if (editingTrackIndex !== null) {
+            if (editingTrackIndex < 0 || editingTrackIndex >= networkTracks.length) {
+                setCopyMessage('Cannot save edit: selected track no longer exists.');
+                return;
+            }
+
+            if (isDevBuild) {
+                try {
+                    const response = await fetch('/__dev/update-track', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ index: editingTrackIndex, track: currentDraftTrackObject })
+                    });
+
+                    if (!response.ok) {
+                        const message = await response.text();
+                        setCopyMessage(`Update failed: ${message || response.statusText}`);
+                        return;
+                    }
+                } catch {
+                    setCopyMessage('Update failed: local dev server endpoint not available.');
+                    return;
+                }
+            }
+
+            setNetworkTracks((previous) => previous.map((track, index) => (
+                index === editingTrackIndex ? currentDraftTrackObject : track
+            )));
+            setDraftTrack({ startId: null, endId: null, viaPoints: [] });
+            setEditingTrackIndex(null);
+            setCopyMessage('Track updated successfully.');
+            return;
+        }
+
         setSavedDraftTracks((previous) => [...previous, currentDraftTrackObject]);
-        resetDraftTrack();
+        setDraftTrack({ startId: null, endId: null, viaPoints: [] });
+        setCopyMessage('Track added to saved drafts. Append when ready.');
     };
 
     const handleCopyText = async (text: string, successText: string) => {
@@ -344,6 +415,7 @@ export function useTrackBuilder({
         draftTrack,
         savedDraftTracks,
         copyMessage,
+        editingTrackIndex,
         currentDraftTrackObject,
         draftStartStation: draftTrack.startId !== null ? stationsById.get(draftTrack.startId) ?? null : null,
         draftEndStation: draftTrack.endId !== null ? stationsById.get(draftTrack.endId) ?? null : null,

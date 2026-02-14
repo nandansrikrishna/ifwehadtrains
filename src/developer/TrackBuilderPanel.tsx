@@ -7,6 +7,8 @@ interface TrackBuilderPanelProps {
     currentDraftTrackObject: Track | null;
     savedDraftTracks: Track[];
     copyMessage: string | null;
+    isEditingExistingTrack: boolean;
+    editingTrackIndex: number | null;
     onResetDraft: () => void;
     onUndoPoint: () => void;
     onSaveTrack: () => void;
@@ -22,6 +24,8 @@ export function TrackBuilderPanel({
     currentDraftTrackObject,
     savedDraftTracks,
     copyMessage,
+    isEditingExistingTrack,
+    editingTrackIndex,
     onResetDraft,
     onUndoPoint,
     onSaveTrack,
@@ -41,6 +45,11 @@ export function TrackBuilderPanel({
             <p className="text-xs text-gray-700 mt-1">
                 Start: {draftStartStation?.name ?? 'not selected'} | End: {draftEndStation?.name ?? 'not selected'} | Via points: {viaPointCount}
             </p>
+            {isEditingExistingTrack && (
+                <p className="text-xs text-amber-700 mt-1">
+                    Editing existing track #{editingTrackIndex}
+                </p>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
                 <button
                     onClick={onResetDraft}
@@ -60,7 +69,7 @@ export function TrackBuilderPanel({
                     className="rounded bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700 disabled:bg-amber-300"
                     disabled={!currentDraftTrackObject}
                 >
-                    Save Track
+                    {isEditingExistingTrack ? 'Save Track Changes' : 'Save Track'}
                 </button>
                 <button
                     onClick={onCopyCurrentJson}
@@ -79,7 +88,7 @@ export function TrackBuilderPanel({
                 <button
                     onClick={onAppendSaved}
                     className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:bg-emerald-300"
-                    disabled={savedDraftTracks.length === 0}
+                    disabled={savedDraftTracks.length === 0 || isEditingExistingTrack}
                 >
                     Append Saved to tracks.json
                 </button>
