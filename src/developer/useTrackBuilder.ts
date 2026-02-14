@@ -137,6 +137,7 @@ export function useTrackBuilder({
     const developerModeRef = useRef(isDeveloperMode);
     const draggingViaIndexRef = useRef<number | null>(null);
     const insertCandidateRef = useRef<InsertCandidate | null>(null);
+    const lastInsertAtRef = useRef(0);
     const [draftTrack, setDraftTrack] = useState<DraftTrackState>({
         startId: null,
         endId: null,
@@ -346,6 +347,10 @@ export function useTrackBuilder({
             const candidate = insertCandidateRef.current;
             if (!candidate) return;
 
+            const now = Date.now();
+            if (now - lastInsertAtRef.current < 120) return;
+            lastInsertAtRef.current = now;
+
             setCopyMessage(null);
 
             setDraftTrack((previous) => {
@@ -364,7 +369,6 @@ export function useTrackBuilder({
         mapInstance.on('mouseleave', 'draft-track-hitbox', handleDraftLineLeave);
         mapInstance.on('mouseleave', 'draft-track-line', handleDraftLineLeave);
         mapInstance.on('click', 'draft-track-hitbox', handleDraftLineClick);
-        mapInstance.on('click', 'draft-track-line', handleDraftLineClick);
 
         return () => {
             mapInstance.off('mousemove', 'draft-track-hitbox', handleDraftLineMove);
@@ -372,7 +376,6 @@ export function useTrackBuilder({
             mapInstance.off('mouseleave', 'draft-track-hitbox', handleDraftLineLeave);
             mapInstance.off('mouseleave', 'draft-track-line', handleDraftLineLeave);
             mapInstance.off('click', 'draft-track-hitbox', handleDraftLineClick);
-            mapInstance.off('click', 'draft-track-line', handleDraftLineClick);
             clearInsertCandidate();
         };
     }, [draftTrack, map, mapLoaded, stationsById]);
