@@ -21,6 +21,12 @@ interface UseTrackBuilderParams {
 
 const DRAFT_LINE_SOURCE = 'draft-track';
 const DRAFT_POINTS_SOURCE = 'draft-points';
+const DRAFT_INSERT_SOURCE = 'draft-insert-point';
+
+interface InsertCandidate {
+    segmentIndex: number;
+    midpoint: [number, number];
+}
 
 function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
     return {
@@ -74,6 +80,29 @@ export function initializeTrackBuilderLayers(mapInstance: MapboxMap): void {
             }
         });
     }
+
+    if (!mapInstance.getSource(DRAFT_INSERT_SOURCE)) {
+        mapInstance.addSource(DRAFT_INSERT_SOURCE, {
+            type: 'geojson',
+            data: createEmptyFeatureCollection()
+        });
+    }
+
+    if (!mapInstance.getLayer('draft-insert-point')) {
+        mapInstance.addLayer({
+            id: 'draft-insert-point',
+            type: 'symbol',
+            source: DRAFT_INSERT_SOURCE,
+            layout: {
+                'text-field': '◌',
+                'text-size': 22,
+                'text-allow-overlap': true
+            },
+            paint: {
+                'text-color': '#d97706'
+            }
+        });
+    }
 }
 
 export function useTrackBuilder({
@@ -87,7 +116,7 @@ export function useTrackBuilder({
 }: UseTrackBuilderParams) {
     const developerModeRef = useRef(isDeveloperMode);
     const draggingViaIndexRef = useRef<number | null>(null);
-    const suppressNextMapClickRef = useRef(false);
+    const insertCandidateRef = useRef<InsertCandidate | null>(null);
     const [draftTrack, setDraftTrack] = useState<DraftTrackState>({
         startId: null,
         endId: null,
@@ -104,33 +133,6 @@ export function useTrackBuilder({
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
         const mapInstance = map.current;
-        if (!mapInstance) return;
-
-        const handleMapClick = (event: MapMouseEvent) => {
-            if (!developerModeRef.current) return;
-            if (suppressNextMapClickRef.current) {
-                suppressNextMapClickRef.current = false;
-                return;
-            }
-            setCopyMessage(null);
-            setDraftTrack((previous) => {
-                if (previous.startId === null || previous.endId === null) return previous;
-                return {
-                    ...previous,
-                    viaPoints: [...previous.viaPoints, [event.lngLat.lng, event.lngLat.lat]]
-                };
-            });
-        };
-
-        mapInstance.on('click', handleMapClick);
-        return () => {
-            mapInstance.off('click', handleMapClick);
-        };
-    }, [map, mapLoaded]);
-
-    useEffect(() => {
-        if (!map.current || !mapLoaded) return;
-        const mapInstance = map.current;
         if (!mapInstance.getLayer('tracks-base')) return;
 
         const handleTrackClick = (event: MapLayerMouseEvent) => {
@@ -140,7 +142,6 @@ export function useTrackBuilder({
             if (!Number.isInteger(index) || index < 0 || index >= networkTracks.length) return;
 
             const track = networkTracks[index];
-            suppressNextMapClickRef.current = true;
             setCopyMessage(`Editing track #${index}. Drag points or add new points, then save.`);
             setEditingTrackIndex(index);
             setDraftTrack({
@@ -177,7 +178,6 @@ export function useTrackBuilder({
             const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
             if (!Number.isInteger(index)) return;
 
-            suppressNextMapClickRef.current = true;
             draggingViaIndexRef.current = index;
             mapInstance.getCanvas().style.cursor = 'grabbing';
             mapInstance.dragPan.disable();
@@ -203,9 +203,6 @@ export function useTrackBuilder({
             draggingViaIndexRef.current = null;
             mapInstance.dragPan.enable();
             mapInstance.getCanvas().style.cursor = developerModeRef.current ? 'grab' : '';
-            window.setTimeout(() => {
-                suppressNextMapClickRef.current = false;
-            }, 0);
         };
 
         mapInstance.on('mouseenter', 'draft-via-points', handleMouseEnter);
@@ -226,6 +223,135 @@ export function useTrackBuilder({
     }, [map, mapLoaded]);
 
     useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+        const mapInstance = map.current;
+        if (!mapInstance.getLayer('draft-track-line')) return;
+
+        const insertSource = mapInstance.getSource(DRAFT_INSERT_SOURCE) as GeoJSONSource | undefined;
+        if (!insertSource) return;
+
+        const clearInsertCandidate = () => {
+            insertCandidateRef.current = null;
+            insertSource.setData(createEmptyFeatureCollection());
+        };
+
+        const buildLineCoordinates = (): [number, number][] => {
+            const startStation = draftTrack.startId !== null ? stationsById.get(draftTrack.startId) : undefined;
+            const endStation = draftTrack.endId !== null ? stationsById.get(draftTrack.endId) : undefined;
+            if (!startStation || !endStation) return [];
+
+            return [startStation.lngLat, ...draftTrack.viaPoints, endStation.lngLat];
+        };
+
+        const getClosestInsertCandidate = (event: MapMouseEvent): InsertCandidate | null => {
+            const lineCoordinates = buildLineCoordinates();
+            if (lineCoordinates.length < 2) return null;
+
+            const mousePoint = event.point;
+            let bestDistance = Number.POSITIVE_INFINITY;
+            let bestSegmentIndex = -1;
+            let bestMidpoint: [number, number] | null = null;
+
+            for (let index = 0; index < lineCoordinates.length - 1; index += 1) {
+                const from = lineCoordinates[index];
+                const to = lineCoordinates[index + 1];
+                const fromPixel = mapInstance.project(from);
+                const toPixel = mapInstance.project(to);
+
+                const segmentX = toPixel.x - fromPixel.x;
+                const segmentY = toPixel.y - fromPixel.y;
+                const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+                if (lengthSquared === 0) continue;
+
+                const projectedT = ((mousePoint.x - fromPixel.x) * segmentX + (mousePoint.y - fromPixel.y) * segmentY) / lengthSquared;
+                const clampedT = Math.max(0, Math.min(1, projectedT));
+                const closestX = fromPixel.x + clampedT * segmentX;
+                const closestY = fromPixel.y + clampedT * segmentY;
+
+                const dx = mousePoint.x - closestX;
+                const dy = mousePoint.y - closestY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestSegmentIndex = index;
+                    bestMidpoint = [
+                        (from[0] + to[0]) / 2,
+                        (from[1] + to[1]) / 2
+                    ];
+                }
+            }
+
+            if (bestSegmentIndex < 0 || !bestMidpoint) return null;
+            return {
+                segmentIndex: bestSegmentIndex,
+                midpoint: bestMidpoint
+            };
+        };
+
+        const setInsertCandidateFromEvent = (event: MapMouseEvent): boolean => {
+            if (!developerModeRef.current || draggingViaIndexRef.current !== null) return false;
+
+            const candidate = getClosestInsertCandidate(event);
+            if (!candidate) return false;
+
+            insertCandidateRef.current = candidate;
+            insertSource.setData({
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'Point',
+                        coordinates: candidate.midpoint
+                    }
+                }]
+            });
+            return true;
+        };
+
+        const handleDraftLineMove = (event: MapMouseEvent) => {
+            if (!setInsertCandidateFromEvent(event)) {
+                clearInsertCandidate();
+            }
+        };
+
+        const handleDraftLineLeave = () => {
+            if (draggingViaIndexRef.current !== null) return;
+            clearInsertCandidate();
+        };
+
+        const handleDraftLineClick = (event: MapMouseEvent) => {
+            if (!setInsertCandidateFromEvent(event)) return;
+            const candidate = insertCandidateRef.current;
+            if (!candidate) return;
+
+            setCopyMessage(null);
+
+            setDraftTrack((previous) => {
+                if (previous.startId === null || previous.endId === null) return previous;
+                const updatedViaPoints = [...previous.viaPoints];
+                updatedViaPoints.splice(candidate.segmentIndex, 0, candidate.midpoint);
+                return {
+                    ...previous,
+                    viaPoints: updatedViaPoints
+                };
+            });
+        };
+
+        mapInstance.on('mousemove', 'draft-track-line', handleDraftLineMove);
+        mapInstance.on('mouseleave', 'draft-track-line', handleDraftLineLeave);
+        mapInstance.on('click', 'draft-track-line', handleDraftLineClick);
+
+        return () => {
+            mapInstance.off('mousemove', 'draft-track-line', handleDraftLineMove);
+            mapInstance.off('mouseleave', 'draft-track-line', handleDraftLineLeave);
+            mapInstance.off('click', 'draft-track-line', handleDraftLineClick);
+            clearInsertCandidate();
+        };
+    }, [draftTrack, map, mapLoaded, stationsById]);
+
+    useEffect(() => {
         if (!isDeveloperMode && map.current) {
             draggingViaIndexRef.current = null;
             map.current.dragPan.enable();
@@ -238,11 +364,13 @@ export function useTrackBuilder({
 
         const draftLineSource = map.current.getSource(DRAFT_LINE_SOURCE) as GeoJSONSource | undefined;
         const draftPointsSource = map.current.getSource(DRAFT_POINTS_SOURCE) as GeoJSONSource | undefined;
-        if (!draftLineSource || !draftPointsSource) return;
+        const draftInsertSource = map.current.getSource(DRAFT_INSERT_SOURCE) as GeoJSONSource | undefined;
+        if (!draftLineSource || !draftPointsSource || !draftInsertSource) return;
 
         if (!isDeveloperMode) {
             draftLineSource.setData(createEmptyFeatureCollection());
             draftPointsSource.setData(createEmptyFeatureCollection());
+            draftInsertSource.setData(createEmptyFeatureCollection());
             return;
         }
 
@@ -279,6 +407,9 @@ export function useTrackBuilder({
                 }
             }))
         });
+
+        draftInsertSource.setData(createEmptyFeatureCollection());
+        insertCandidateRef.current = null;
     }, [draftTrack, isDeveloperMode, map, mapLoaded, stationsById]);
 
     const currentDraftTrackObject: Track | null = useMemo(() => {

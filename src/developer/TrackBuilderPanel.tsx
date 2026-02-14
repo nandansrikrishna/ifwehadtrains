@@ -37,10 +37,13 @@ export function TrackBuilderPanel({
         <div className="absolute bottom-4 left-4 z-30 w-[32rem] max-w-[92vw] bg-white/95 p-4 rounded shadow-md border border-amber-300">
             <p className="text-sm font-semibold text-gray-900">Track Builder</p>
             <p className="text-xs text-gray-700 mt-1">
-                Click station marker 1 (start), station marker 2 (end), then click map to add points between them.
+                Click station marker 1 (start), station marker 2 (end), then insert points by clicking segment midpoints.
             </p>
             <p className="text-xs text-gray-700 mt-1">
                 Drag any amber point to reposition it.
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
+                Hover a track segment to see a dotted amber midpoint, then click it to insert a point.
             </p>
             <p className="text-xs text-gray-700 mt-1">
                 Start: {draftStartStation?.name ?? 'not selected'} | End: {draftEndStation?.name ?? 'not selected'} | Via points: {viaPointCount}
