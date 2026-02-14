@@ -323,7 +323,6 @@ export default function Map() {
                     savedDraftTracks={savedDraftTracks}
                     copyMessage={copyMessage}
                     isEditingExistingTrack={editingTrackIndex !== null}
-                    editingTrackIndex={editingTrackIndex}
                     canUndo={canUndo}
                     canRedo={canRedo}
                     onResetDraft={resetDraftTrack}

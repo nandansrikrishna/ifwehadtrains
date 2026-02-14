@@ -8,7 +8,6 @@ interface TrackBuilderPanelProps {
     savedDraftTracks: Track[];
     copyMessage: string | null;
     isEditingExistingTrack: boolean;
-    editingTrackIndex: number | null;
     canUndo: boolean;
     canRedo: boolean;
     onResetDraft: () => void;
@@ -26,7 +25,6 @@ export function TrackBuilderPanel({
     savedDraftTracks,
     copyMessage,
     isEditingExistingTrack,
-    editingTrackIndex,
     canUndo,
     canRedo,
     onResetDraft,
@@ -56,11 +54,6 @@ export function TrackBuilderPanel({
             <p className="text-xs text-gray-700 mt-1">
                 Start: {draftStartStation?.name ?? 'not selected'} | End: {draftEndStation?.name ?? 'not selected'} | Via points: {viaPointCount}
             </p>
-            {isEditingExistingTrack && (
-                <p className="text-xs text-amber-700 mt-1">
-                    Editing existing track #{editingTrackIndex}
-                </p>
-            )}
             <div className="mt-3 flex flex-wrap gap-2">
                 <button
                     onClick={onResetDraft}
