@@ -43,6 +43,9 @@ export function TrackBuilderPanel({
                 Drag any amber point to reposition it.
             </p>
             <p className="text-xs text-gray-700 mt-1">
+                Click a point to select it, then press Delete/Backspace to remove it.
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
                 Hover a track segment to see a dotted amber midpoint, then click it to insert a point.
             </p>
             <p className="text-xs text-gray-700 mt-1">
