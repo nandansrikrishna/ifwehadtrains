@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { GeoJSONSource, Map as MapboxMap, MapMouseEvent } from 'mapbox-gl';
+import type { GeoJSONSource, Map as MapboxMap, MapLayerMouseEvent, MapMouseEvent } from 'mapbox-gl';
 import type { Station, Track } from '../routing';
 
 interface DraftTrackState {
@@ -84,6 +84,8 @@ export function useTrackBuilder({
     setNetworkTracks,
 }: UseTrackBuilderParams) {
     const developerModeRef = useRef(isDeveloperMode);
+    const draggingViaIndexRef = useRef<number | null>(null);
+    const suppressNextMapClickRef = useRef(false);
     const [draftTrack, setDraftTrack] = useState<DraftTrackState>({
         startId: null,
         endId: null,
@@ -103,6 +105,10 @@ export function useTrackBuilder({
 
         const handleMapClick = (event: MapMouseEvent) => {
             if (!developerModeRef.current) return;
+            if (suppressNextMapClickRef.current) {
+                suppressNextMapClickRef.current = false;
+                return;
+            }
             setCopyMessage(null);
             setDraftTrack((previous) => {
                 if (previous.startId === null || previous.endId === null) return previous;
@@ -118,6 +124,83 @@ export function useTrackBuilder({
             mapInstance.off('click', handleMapClick);
         };
     }, [map, mapLoaded]);
+
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+        const mapInstance = map.current;
+        if (!mapInstance.getLayer('draft-via-points')) return;
+
+        const handleMouseEnter = () => {
+            if (!developerModeRef.current) return;
+            mapInstance.getCanvas().style.cursor = 'grab';
+        };
+
+        const handleMouseLeave = () => {
+            if (draggingViaIndexRef.current !== null) return;
+            mapInstance.getCanvas().style.cursor = '';
+        };
+
+        const handlePointMouseDown = (event: MapLayerMouseEvent) => {
+            if (!developerModeRef.current) return;
+            const rawIndex = event.features?.[0]?.properties?.index;
+            const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
+            if (!Number.isInteger(index)) return;
+
+            suppressNextMapClickRef.current = true;
+            draggingViaIndexRef.current = index;
+            mapInstance.getCanvas().style.cursor = 'grabbing';
+            mapInstance.dragPan.disable();
+        };
+
+        const handleMouseMove = (event: MapMouseEvent) => {
+            const activeIndex = draggingViaIndexRef.current;
+            if (activeIndex === null) return;
+
+            setDraftTrack((previous) => {
+                if (activeIndex < 0 || activeIndex >= previous.viaPoints.length) return previous;
+                const updatedViaPoints = [...previous.viaPoints];
+                updatedViaPoints[activeIndex] = [event.lngLat.lng, event.lngLat.lat];
+                return {
+                    ...previous,
+                    viaPoints: updatedViaPoints
+                };
+            });
+        };
+
+        const stopDragging = () => {
+            if (draggingViaIndexRef.current === null) return;
+            draggingViaIndexRef.current = null;
+            mapInstance.dragPan.enable();
+            mapInstance.getCanvas().style.cursor = developerModeRef.current ? 'grab' : '';
+            window.setTimeout(() => {
+                suppressNextMapClickRef.current = false;
+            }, 0);
+        };
+
+        mapInstance.on('mouseenter', 'draft-via-points', handleMouseEnter);
+        mapInstance.on('mouseleave', 'draft-via-points', handleMouseLeave);
+        mapInstance.on('mousedown', 'draft-via-points', handlePointMouseDown);
+        mapInstance.on('mousemove', handleMouseMove);
+        mapInstance.on('mouseup', stopDragging);
+
+        return () => {
+            mapInstance.off('mouseenter', 'draft-via-points', handleMouseEnter);
+            mapInstance.off('mouseleave', 'draft-via-points', handleMouseLeave);
+            mapInstance.off('mousedown', 'draft-via-points', handlePointMouseDown);
+            mapInstance.off('mousemove', handleMouseMove);
+            mapInstance.off('mouseup', stopDragging);
+            mapInstance.dragPan.enable();
+            mapInstance.getCanvas().style.cursor = '';
+        };
+    }, [map, mapLoaded]);
+
+    useEffect(() => {
+        if (!isDeveloperMode && map.current) {
+            draggingViaIndexRef.current = null;
+            map.current.dragPan.enable();
+            map.current.getCanvas().style.cursor = '';
+        }
+    }, [isDeveloperMode, map]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;

@@ -36,6 +36,9 @@ export function TrackBuilderPanel({
                 Click station marker 1 (start), station marker 2 (end), then click map to add points between them.
             </p>
             <p className="text-xs text-gray-700 mt-1">
+                Drag any amber point to reposition it.
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
                 Start: {draftStartStation?.name ?? 'not selected'} | End: {draftEndStation?.name ?? 'not selected'} | Via points: {viaPointCount}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
