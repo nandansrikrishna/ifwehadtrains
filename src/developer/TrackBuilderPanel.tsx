@@ -52,6 +52,12 @@ export function TrackBuilderPanel({
                 Hover a track segment to see a dotted amber midpoint, then click it to insert a point.
             </p>
             <p className="text-xs text-gray-700 mt-1">
+                Cmd+Click an existing track to select it for deletion.
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
+                With a track selected for deletion, press Delete/Backspace.
+            </p>
+            <p className="text-xs text-gray-700 mt-1">
                 Start: {draftStartStation?.name ?? 'not selected'} | End: {draftEndStation?.name ?? 'not selected'} | Via points: {viaPointCount}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">

@@ -31,6 +31,7 @@ const EMPTY_DRAFT_TRACK: DraftTrackState = {
 };
 
 type DraftTrackActionType = 'insert_point' | 'delete_point' | 'move_point';
+type GlobalActionDomain = 'draft' | 'network';
 
 interface PointPayload {
     index: number;
@@ -46,6 +47,13 @@ interface InsertCandidate {
     midpoint: [number, number];
 }
 
+interface NetworkHistoryEntry {
+    redo: (tracks: Track[]) => Track[];
+    undo: (tracks: Track[]) => Track[];
+    persistRedo?: () => Promise<boolean>;
+    persistUndo?: () => Promise<boolean>;
+}
+
 function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
     return {
         type: 'FeatureCollection',
@@ -55,6 +63,21 @@ function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
 
 function pointsEqual(a: [number, number], b: [number, number]): boolean {
     return a[0] === b[0] && a[1] === b[1];
+}
+
+async function postJson(url: string, body: unknown): Promise<boolean> {
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
 }
 
 const draftTrackActionHandlers: ActionHandlers<DraftTrackState, DraftTrackActionType> = {
@@ -212,27 +235,33 @@ export function useTrackBuilder({
     const insertCandidateRef = useRef<InsertCandidate | null>(null);
     const lastInsertAtRef = useRef(0);
     const suppressNextLineInsertRef = useRef(false);
+    const isApplyingNetworkActionRef = useRef(false);
 
     const {
         state: draftTrack,
         setState: setDraftTrack,
-        execute: executeDraftTrackAction,
-        record: recordDraftTrackAction,
-        undo: undoDraftTrackAction,
-        redo: redoDraftTrackAction,
+        execute: executeDraftTrackActionRaw,
+        record: recordDraftTrackActionRaw,
+        undo: undoDraftTrackActionRaw,
+        redo: redoDraftTrackActionRaw,
         clearHistory: clearDraftTrackHistory,
-        canUndo,
-        canRedo,
     } = useActionHistory<DraftTrackState, DraftTrackActionType>(
         EMPTY_DRAFT_TRACK,
         draftTrackActionHandlers
     );
 
     const draftTrackRef = useRef(draftTrack);
+    const globalUndoStackRef = useRef<GlobalActionDomain[]>([]);
+    const globalRedoStackRef = useRef<GlobalActionDomain[]>([]);
+    const networkUndoStackRef = useRef<NetworkHistoryEntry[]>([]);
+    const networkRedoStackRef = useRef<NetworkHistoryEntry[]>([]);
+
+    const [historyVersion, setHistoryVersion] = useState(0);
     const [savedDraftTracks, setSavedDraftTracks] = useState<Track[]>([]);
     const [copyMessage, setCopyMessage] = useState<string | null>(null);
     const [editingTrackIndex, setEditingTrackIndex] = useState<number | null>(null);
     const [selectedViaPointIndex, setSelectedViaPointIndex] = useState<number | null>(null);
+    const [selectedTrackDeleteIndex, setSelectedTrackDeleteIndex] = useState<number | null>(null);
 
     useEffect(() => {
         developerModeRef.current = isDeveloperMode;
@@ -241,6 +270,172 @@ export function useTrackBuilder({
     useEffect(() => {
         draftTrackRef.current = draftTrack;
     }, [draftTrack]);
+
+    const bumpHistoryVersion = useCallback(() => {
+        setHistoryVersion((value) => value + 1);
+    }, []);
+
+    const pushGlobalNewAction = useCallback((domain: GlobalActionDomain) => {
+        globalUndoStackRef.current.push(domain);
+        globalRedoStackRef.current = [];
+        bumpHistoryVersion();
+    }, [bumpHistoryVersion]);
+
+    const executeDraftTrackAction = useCallback((entry: HistoryEntry<DraftTrackActionType>) => {
+        executeDraftTrackActionRaw(entry);
+        pushGlobalNewAction('draft');
+    }, [executeDraftTrackActionRaw, pushGlobalNewAction]);
+
+    const recordDraftTrackAction = useCallback((entry: HistoryEntry<DraftTrackActionType>) => {
+        recordDraftTrackActionRaw(entry);
+        pushGlobalNewAction('draft');
+    }, [recordDraftTrackActionRaw, pushGlobalNewAction]);
+
+    const executeNetworkAction = useCallback(async (entry: NetworkHistoryEntry) => {
+        if (isApplyingNetworkActionRef.current) return false;
+        isApplyingNetworkActionRef.current = true;
+
+        try {
+            if (entry.persistRedo) {
+                const persisted = await entry.persistRedo();
+                if (!persisted) return false;
+            }
+
+            setNetworkTracks((previous) => entry.redo(previous));
+            networkUndoStackRef.current.push(entry);
+            networkRedoStackRef.current = [];
+            pushGlobalNewAction('network');
+            return true;
+        } finally {
+            isApplyingNetworkActionRef.current = false;
+        }
+    }, [pushGlobalNewAction, setNetworkTracks]);
+
+    const clearDraftBuilderState = useCallback(() => {
+        setDraftTrack(EMPTY_DRAFT_TRACK);
+        clearDraftTrackHistory();
+        setSelectedViaPointIndex(null);
+    }, [clearDraftTrackHistory, setDraftTrack]);
+
+    const deleteTrackByIndex = useCallback(async (index: number) => {
+        if (index < 0 || index >= networkTracks.length) return false;
+        const removedTrack = networkTracks[index];
+
+        const entry: NetworkHistoryEntry = {
+            redo: (tracks) => tracks.filter((_, trackIndex) => trackIndex !== index),
+            undo: (tracks) => {
+                const updated = [...tracks];
+                updated.splice(index, 0, removedTrack);
+                return updated;
+            },
+            persistRedo: isDevBuild
+                ? () => postJson('/__dev/delete-track', { index })
+                : undefined,
+            persistUndo: isDevBuild
+                ? () => postJson('/__dev/insert-track', { index, track: removedTrack })
+                : undefined,
+        };
+
+        const deleted = await executeNetworkAction(entry);
+        if (!deleted) {
+            setCopyMessage('Delete failed: could not persist track deletion.');
+            return false;
+        }
+
+        if (editingTrackIndex === index) {
+            clearDraftBuilderState();
+            setEditingTrackIndex(null);
+        }
+
+        setSelectedTrackDeleteIndex(null);
+        setCopyMessage(`Deleted track #${index}.`);
+        return true;
+    }, [clearDraftBuilderState, editingTrackIndex, executeNetworkAction, isDevBuild, networkTracks]);
+
+    const canUndo = historyVersion >= 0 && globalUndoStackRef.current.length > 0;
+    const canRedo = historyVersion >= 0 && globalRedoStackRef.current.length > 0;
+
+    const undoGlobalAction = useCallback(async () => {
+        const domain = globalUndoStackRef.current.pop();
+        if (!domain) return false;
+
+        if (domain === 'draft') {
+            const didUndo = undoDraftTrackActionRaw();
+            if (!didUndo) return false;
+            globalRedoStackRef.current.push('draft');
+            bumpHistoryVersion();
+            return true;
+        }
+
+        const entry = networkUndoStackRef.current.pop();
+        if (!entry) return false;
+
+        if (isApplyingNetworkActionRef.current) {
+            networkUndoStackRef.current.push(entry);
+            globalUndoStackRef.current.push('network');
+            return false;
+        }
+
+        isApplyingNetworkActionRef.current = true;
+        try {
+            if (entry.persistUndo) {
+                const persisted = await entry.persistUndo();
+                if (!persisted) {
+                    networkUndoStackRef.current.push(entry);
+                    globalUndoStackRef.current.push('network');
+                    return false;
+                }
+            }
+            setNetworkTracks((previous) => entry.undo(previous));
+            networkRedoStackRef.current.push(entry);
+            globalRedoStackRef.current.push('network');
+            bumpHistoryVersion();
+            return true;
+        } finally {
+            isApplyingNetworkActionRef.current = false;
+        }
+    }, [bumpHistoryVersion, setNetworkTracks, undoDraftTrackActionRaw]);
+
+    const redoGlobalAction = useCallback(async () => {
+        const domain = globalRedoStackRef.current.pop();
+        if (!domain) return false;
+
+        if (domain === 'draft') {
+            const didRedo = redoDraftTrackActionRaw();
+            if (!didRedo) return false;
+            globalUndoStackRef.current.push('draft');
+            bumpHistoryVersion();
+            return true;
+        }
+
+        const entry = networkRedoStackRef.current.pop();
+        if (!entry) return false;
+
+        if (isApplyingNetworkActionRef.current) {
+            networkRedoStackRef.current.push(entry);
+            globalRedoStackRef.current.push('network');
+            return false;
+        }
+
+        isApplyingNetworkActionRef.current = true;
+        try {
+            if (entry.persistRedo) {
+                const persisted = await entry.persistRedo();
+                if (!persisted) {
+                    networkRedoStackRef.current.push(entry);
+                    globalRedoStackRef.current.push('network');
+                    return false;
+                }
+            }
+            setNetworkTracks((previous) => entry.redo(previous));
+            networkUndoStackRef.current.push(entry);
+            globalUndoStackRef.current.push('network');
+            bumpHistoryVersion();
+            return true;
+        } finally {
+            isApplyingNetworkActionRef.current = false;
+        }
+    }, [bumpHistoryVersion, redoDraftTrackActionRaw, setNetworkTracks]);
 
     const isUndoShortcut = useCallback((event: KeyboardEvent) => {
         if (!(event.metaKey || event.ctrlKey)) return false;
@@ -260,10 +455,13 @@ export function useTrackBuilder({
             enabled: isDeveloperMode && canUndo,
             matches: isUndoShortcut,
             handler: () => {
-                if (undoDraftTrackAction()) {
-                    setSelectedViaPointIndex(null);
-                    setCopyMessage(null);
-                }
+                void undoGlobalAction().then((didUndo) => {
+                    if (didUndo) {
+                        setSelectedViaPointIndex(null);
+                        setSelectedTrackDeleteIndex(null);
+                        setCopyMessage(null);
+                    }
+                });
             }
         },
         {
@@ -271,10 +469,13 @@ export function useTrackBuilder({
             enabled: isDeveloperMode && canRedo,
             matches: isRedoShortcut,
             handler: () => {
-                if (redoDraftTrackAction()) {
-                    setSelectedViaPointIndex(null);
-                    setCopyMessage(null);
-                }
+                void redoGlobalAction().then((didRedo) => {
+                    if (didRedo) {
+                        setSelectedViaPointIndex(null);
+                        setSelectedTrackDeleteIndex(null);
+                        setCopyMessage(null);
+                    }
+                });
             }
         },
         {
@@ -302,26 +503,32 @@ export function useTrackBuilder({
                 setSelectedViaPointIndex(null);
                 setCopyMessage(null);
             }
+        },
+        {
+            id: 'delete-selected-network-track',
+            enabled: isDeveloperMode && selectedTrackDeleteIndex !== null && selectedViaPointIndex === null,
+            matches: (event) => event.key === 'Delete' || event.key === 'Backspace',
+            handler: () => {
+                const index = selectedTrackDeleteIndex;
+                if (index === null) return;
+                void deleteTrackByIndex(index);
+            }
         }
     ], [
         canRedo,
         canUndo,
+        deleteTrackByIndex,
         executeDraftTrackAction,
         isDeveloperMode,
         isRedoShortcut,
         isUndoShortcut,
-        redoDraftTrackAction,
+        redoGlobalAction,
+        selectedTrackDeleteIndex,
         selectedViaPointIndex,
-        undoDraftTrackAction,
+        undoGlobalAction,
     ]);
 
     useKeyboardCommands(keyboardCommands);
-
-    const clearDraftBuilderState = useCallback(() => {
-        setDraftTrack(EMPTY_DRAFT_TRACK);
-        clearDraftTrackHistory();
-        setSelectedViaPointIndex(null);
-    }, [clearDraftTrackHistory, setDraftTrack]);
 
     useEffect(() => {
         if (!map.current || !mapLoaded) return;
@@ -331,18 +538,26 @@ export function useTrackBuilder({
         const handleTrackClick = (event: MapLayerMouseEvent) => {
             if (!developerModeRef.current) return;
 
+            const rawIndex = event.features?.[0]?.properties?.index;
+            const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= networkTracks.length) return;
+
+            const isDeleteSelect = event.originalEvent.metaKey || event.originalEvent.ctrlKey;
+            if (isDeleteSelect) {
+                setSelectedTrackDeleteIndex(index);
+                setCopyMessage(`Track #${index} selected for deletion. Press Delete/Backspace to remove.`);
+                return;
+            }
+
             const interactingWithDraft = mapInstance.queryRenderedFeatures(event.point, {
                 layers: ['draft-via-points', 'draft-track-hitbox', 'draft-track-line']
             }).length > 0;
             if (interactingWithDraft) return;
 
-            const rawIndex = event.features?.[0]?.properties?.index;
-            const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
-            if (!Number.isInteger(index) || index < 0 || index >= networkTracks.length) return;
-
             const track = networkTracks[index];
             setCopyMessage(`Editing track #${index}. Drag points or add new points, then save.`);
             setEditingTrackIndex(index);
+            setSelectedTrackDeleteIndex(null);
             setDraftTrack({
                 startId: track.endpoints[0],
                 endId: track.endpoints[1],
@@ -624,6 +839,7 @@ export function useTrackBuilder({
             map.current.dragPan.enable();
             map.current.getCanvas().style.cursor = '';
             setSelectedViaPointIndex(null);
+            setSelectedTrackDeleteIndex(null);
         }
     }, [isDeveloperMode, map]);
 
@@ -823,6 +1039,7 @@ export function useTrackBuilder({
         savedDraftTracks,
         copyMessage,
         editingTrackIndex,
+        selectedTrackDeleteIndex,
         currentDraftTrackObject,
         canUndo,
         canRedo,

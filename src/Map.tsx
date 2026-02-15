@@ -59,6 +59,7 @@ export default function Map() {
         savedDraftTracks,
         copyMessage,
         editingTrackIndex,
+        selectedTrackDeleteIndex,
         currentDraftTrackObject,
         canUndo,
         canRedo,
@@ -142,6 +143,25 @@ export default function Map() {
                 }
             });
 
+            map.current.addSource('track-delete-selection', {
+                type: 'geojson',
+                data: createEmptyFeatureCollection()
+            });
+
+            map.current.addLayer({
+                id: 'track-delete-selection',
+                type: 'line',
+                source: 'track-delete-selection',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': '#dc2626',
+                    'line-width': 8
+                }
+            });
+
             map.current.addSource('route-path', {
                 type: 'geojson',
                 data: createEmptyFeatureCollection()
@@ -183,6 +203,30 @@ export default function Map() {
             }))
         });
     }, [mapLoaded, networkTracks]);
+
+    useEffect(() => {
+        if (!map.current || !mapLoaded) return;
+        const deleteSelectionSource = map.current.getSource('track-delete-selection') as mapboxgl.GeoJSONSource | undefined;
+        if (!deleteSelectionSource) return;
+
+        const selectedTrack = selectedTrackDeleteIndex !== null
+            ? networkTracks[selectedTrackDeleteIndex]
+            : undefined;
+
+        deleteSelectionSource.setData({
+            type: 'FeatureCollection',
+            features: selectedTrack
+                ? [{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: selectedTrack.coordinates
+                    }
+                }]
+                : []
+        });
+    }, [mapLoaded, networkTracks, selectedTrackDeleteIndex]);
 
     const handleSearch = (from: number, to: number) => {
         const fromStation = stationsById.get(from);
