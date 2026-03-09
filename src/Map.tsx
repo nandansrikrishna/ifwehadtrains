@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import stationData from './stations.json';
 import tracks from './tracks.json';
-import { SearchBox } from './SearchBox.tsx';
+import { SearchBox, type RouteDisplay } from './SearchBox.tsx';
 import { HomeIcon } from '@heroicons/react/24/outline';
-import { computeFastestRoute, type Station, type Track } from './routing';
+import { computeFastestRoute, type LngLat, type Station, type Track } from './routing';
 import { TrackBuilderPanel } from './developer/TrackBuilderPanel';
 import { initializeTrackBuilderLayers, useTrackBuilder } from './developer/useTrackBuilder';
 
@@ -14,23 +14,8 @@ const stations: Station[] = stationData as Station[];
 const initialTracks: Track[] = tracks as Track[];
 const IS_DEV_BUILD = import.meta.env.DEV;
 
-interface RouteDisplay {
-    stationNames: string[];
-    totalMinutes: number;
-}
-
 const DEFAULT_CENTER: [number, number] = [-95.3521, 38.3969];
 const DEFAULT_ZOOM = 4.25;
-
-function formatDuration(totalMinutes: number): string {
-    const rounded = Math.round(totalMinutes);
-    const hours = Math.floor(rounded / 60);
-    const minutes = rounded % 60;
-
-    if (hours === 0) return `${minutes}m`;
-    if (minutes === 0) return `${hours}h`;
-    return `${hours}h ${minutes}m`;
-}
 
 function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
     return {
@@ -39,12 +24,31 @@ function createEmptyFeatureCollection(): GeoJSON.FeatureCollection {
     };
 }
 
+function createRouteFeatureCollection(coordinates: LngLat[]): GeoJSON.FeatureCollection {
+    return {
+        type: 'FeatureCollection',
+        features: coordinates.length > 1
+            ? [{
+                type: 'Feature' as const,
+                properties: {},
+                geometry: {
+                    type: 'LineString' as const,
+                    coordinates
+                }
+            }]
+            : []
+    };
+}
+
 export default function Map() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
 
+    const [fromStationId, setFromStationId] = useState<number | null>(null);
+    const [toStationId, setToStationId] = useState<number | null>(null);
     const [routeDisplay, setRouteDisplay] = useState<RouteDisplay | null>(null);
     const [routeError, setRouteError] = useState<string | null>(null);
+    const [plannerResetVersion, setPlannerResetVersion] = useState(0);
     const [mapLoaded, setMapLoaded] = useState(false);
     const [isDeveloperMode, setIsDeveloperMode] = useState(false);
     const [networkTracks, setNetworkTracks] = useState<Track[]>(() => initialTracks);
@@ -184,28 +188,53 @@ export default function Map() {
         });
     }, [mapLoaded, networkTracks]);
 
-    const handleSearch = (from: number, to: number) => {
-        const fromStation = stationsById.get(from);
-        const toStation = stationsById.get(to);
-        const route = computeFastestRoute(from, to, networkTracks);
+    const clearRouteVisualization = useCallback(() => {
+        if (!map.current) return;
+
+        const routeSource = map.current.getSource('route-path') as mapboxgl.GeoJSONSource | undefined;
+        routeSource?.setData(createEmptyFeatureCollection());
+    }, []);
+
+    const handleClearPlanner = useCallback(() => {
+        setFromStationId(null);
+        setToStationId(null);
+        setRouteDisplay(null);
+        setRouteError(null);
+        setPlannerResetVersion((version) => version + 1);
+        clearRouteVisualization();
+    }, [clearRouteVisualization]);
+
+    useEffect(() => {
+        if (fromStationId === null || toStationId === null) {
+            setRouteDisplay(null);
+            setRouteError(null);
+            clearRouteVisualization();
+            return;
+        }
+
+        const fromStation = stationsById.get(fromStationId);
+        const toStation = stationsById.get(toStationId);
 
         if (!fromStation || !toStation) {
             setRouteError('Invalid station selection.');
             setRouteDisplay(null);
+            clearRouteVisualization();
             return;
         }
+
+        if (fromStationId === toStationId) {
+            setRouteError('Choose two different cities to map a route.');
+            setRouteDisplay(null);
+            clearRouteVisualization();
+            return;
+        }
+
+        const route = computeFastestRoute(fromStationId, toStationId, networkTracks);
 
         if (!route) {
             setRouteError(`No connected route found between ${fromStation.name} and ${toStation.name}.`);
             setRouteDisplay(null);
-
-            if (map.current) {
-                const routeSource = map.current.getSource('route-path') as mapboxgl.GeoJSONSource | undefined;
-                routeSource?.setData({
-                    type: 'FeatureCollection',
-                    features: []
-                });
-            }
+            clearRouteVisualization();
             return;
         }
 
@@ -217,48 +246,40 @@ export default function Map() {
             totalMinutes: route.totalMinutes,
         });
 
-        if (map.current) {
-            const routeSource = map.current.getSource('route-path') as mapboxgl.GeoJSONSource | undefined;
-            routeSource?.setData({
-                type: 'FeatureCollection',
-                features: route.pathCoordinates.length > 1
-                    ? [{
-                        type: 'Feature',
-                        properties: {},
-                        geometry: {
-                            type: 'LineString',
-                            coordinates: route.pathCoordinates
-                        }
-                    }]
-                    : []
-            });
+        if (!map.current || !mapLoaded) return;
 
-            const bounds = new mapboxgl.LngLatBounds();
-            if (route.pathCoordinates.length > 1) {
-                route.pathCoordinates.forEach((coordinate) => bounds.extend(coordinate));
-            } else {
-                bounds.extend(fromStation.lngLat);
-                bounds.extend(toStation.lngLat);
-            }
+        const routeSource = map.current.getSource('route-path') as mapboxgl.GeoJSONSource | undefined;
+        routeSource?.setData(createRouteFeatureCollection(route.pathCoordinates));
 
-            map.current.fitBounds(bounds, {
-                padding: { top: 110, bottom: 110, left: 110, right: 110 },
-                maxZoom: 8
-            });
+        const bounds = new mapboxgl.LngLatBounds();
+        if (route.pathCoordinates.length > 1) {
+            route.pathCoordinates.forEach((coordinate) => bounds.extend(coordinate));
+        } else {
+            bounds.extend(fromStation.lngLat);
+            bounds.extend(toStation.lngLat);
         }
-    };
+
+        const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
+        const leftPadding = viewportWidth >= 1024 ? 400 : viewportWidth >= 640 ? 340 : 80;
+        const rightPadding = viewportWidth >= 640 ? 120 : 80;
+
+        map.current.fitBounds(bounds, {
+            padding: { top: 110, bottom: 110, left: leftPadding, right: rightPadding },
+            maxZoom: 8
+        });
+    }, [
+        clearRouteVisualization,
+        fromStationId,
+        mapLoaded,
+        networkTracks,
+        stationsById,
+        toStationId,
+    ]);
 
     const handleHome = () => {
-        setRouteDisplay(null);
-        setRouteError(null);
+        handleClearPlanner();
 
         if (map.current) {
-            const routeSource = map.current.getSource('route-path') as mapboxgl.GeoJSONSource | undefined;
-            routeSource?.setData({
-                type: 'FeatureCollection',
-                features: []
-            });
-
             map.current.flyTo({
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM,
@@ -271,27 +292,22 @@ export default function Map() {
 
     return (
         <div className="relative">
-            <SearchBox onSearch={handleSearch} stations={stations} />
-            <div className="absolute top-4 left-64 z-20 max-w-md bg-white/95 p-3 rounded shadow-md border border-gray-200">
-                {routeError && (
-                    <p className="text-sm text-red-700">{routeError}</p>
-                )}
-                {!routeError && routeDisplay && (
-                    <div className="text-sm text-gray-800">
-                        <p className="font-semibold">
-                            Estimated travel time: {formatDuration(routeDisplay.totalMinutes)}
-                        </p>
-                        <p className="mt-1">
-                            Route: {routeDisplay.stationNames.join(' -> ')}
-                        </p>
-                    </div>
-                )}
-                {!routeError && !routeDisplay && (
-                    <p className="text-sm text-gray-600">
-                        Select two stations to compute the fastest route.
-                    </p>
-                )}
-            </div>
+            <SearchBox
+                stations={stations}
+                fromStationId={fromStationId}
+                toStationId={toStationId}
+                routeDisplay={routeDisplay}
+                routeError={routeError}
+                resetVersion={plannerResetVersion}
+                statusText="Search by city name or airport code to find the fastest route."
+                onFromChange={setFromStationId}
+                onToChange={setToStationId}
+                onSwap={() => {
+                    setFromStationId(toStationId);
+                    setToStationId(fromStationId);
+                }}
+                onClear={handleClearPlanner}
+            />
             {IS_DEV_BUILD && (
                 <button
                     onClick={() => setIsDeveloperMode((previous) => !previous)}
