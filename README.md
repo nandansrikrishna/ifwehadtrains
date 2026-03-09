@@ -1,30 +1,59 @@
-# React + TypeScript + Vite
+# ifwehadtrains
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Map-based React application built with Vite, TypeScript, Tailwind CSS, and Mapbox GL.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node `24.14.0` (see `.nvmrc`)
+- npm `10+`
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+```bash
+nvm use
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+## Install
+
+```bash
+npm install
+```
+
+## Run
+
+```bash
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Lint
+
+```bash
+npm run lint
+```
+
+## Upgrade Notes
+
+- The project is now on current major versions of React, Vite, TypeScript, ESLint (flat config), and Tailwind CSS v4.
+- Tailwind is configured through `@tailwindcss/postcss` and `src/index.css` now imports `tailwindcss` directly.
+- `mapbox-gl` ships its own TypeScript types, so `@types/mapbox-gl` is no longer installed.
+
+## Verification Checklist After Dependency Updates
+
+Run the following and confirm all pass:
+
+```bash
+npm run lint
+npm run build
+npm run dev
+```
+
+Manual checks while dev server is running:
+
+1. App loads without runtime errors.
+2. Map renders and map interactions still work.
+3. Dev endpoints `/__dev/append-tracks` and `/__dev/update-track` still function.
+4. Styling looks correct after Tailwind upgrades.
