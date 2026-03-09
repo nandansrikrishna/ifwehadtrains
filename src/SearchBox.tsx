@@ -14,7 +14,6 @@ interface SearchBoxProps {
     routeDisplay: RouteDisplay | null;
     routeError: string | null;
     resetVersion: number;
-    statusText?: string;
     onFromChange: (stationId: number | null) => void;
     onToChange: (stationId: number | null) => void;
     onSwap: () => void;
@@ -105,7 +104,6 @@ export function SearchBox({
     routeDisplay,
     routeError,
     resetVersion,
-    statusText,
     onFromChange,
     onToChange,
     onSwap,
@@ -161,8 +159,8 @@ export function SearchBox({
         if (routeError || routeDisplay) return null;
         if (fromStationId !== null && toStationId === null) return 'Choose a destination city to preview the fastest route.';
         if (fromStationId === null && toStationId !== null) return 'Choose an origin city to preview the fastest route.';
-        return statusText ?? 'Search by city name or airport code to find the fastest route.';
-    }, [fromStationId, routeDisplay, routeError, statusText, toStationId]);
+        return null;
+    }, [fromStationId, routeDisplay, routeError, toStationId]);
 
     const hasPlannerContent = fromQuery.length > 0 || toQuery.length > 0 || fromStationId !== null || toStationId !== null;
     const canSwap = fromStationId !== null && toStationId !== null;
@@ -425,12 +423,6 @@ export function SearchBox({
                         <div className="min-w-0">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-sky-700">
                                 Route Planner
-                            </p>
-                            <h2 className="mt-2 text-lg font-semibold text-slate-900">
-                                Find the fastest trip between cities
-                            </h2>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Search by city name or airport code. Routes update as soon as both cities are selected.
                             </p>
                         </div>
                         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">

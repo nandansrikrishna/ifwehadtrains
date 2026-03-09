@@ -299,7 +299,6 @@ export default function Map() {
                 routeDisplay={routeDisplay}
                 routeError={routeError}
                 resetVersion={plannerResetVersion}
-                statusText="Search by city name or airport code to find the fastest route."
                 onFromChange={setFromStationId}
                 onToChange={setToStationId}
                 onSwap={() => {
